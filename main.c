@@ -96,8 +96,8 @@ char* NormalizeSignature(char* funtion) {
 char* NormalizeSignature(char* funtion) {
     Nob_String_Builder sb = {0};
     stb_lexer lexer = {0};
-    char storage[1024];
-    stb_c_lexer_init(&lexer, funtion, funtion+strlen(funtion), storage, 1024);
+    char storage[512];
+    stb_c_lexer_init(&lexer, funtion, funtion+strlen(funtion), storage, sizeof(storage));
     while (stb_c_lexer_get_token(&lexer)) {
         if (lexer.token < CLEX_eof) {
             nob_sb_append(&sb, lexer.token);
@@ -109,6 +109,7 @@ char* NormalizeSignature(char* funtion) {
         }
         nob_sb_append(&sb, ' ');
     }
+    sb.items[sb.count] = '\0';
     return sb.items;
 }
 
@@ -163,9 +164,13 @@ Options ParseCmdOptions(int argc, char* argv[]) {
     return opts;
 }
 
-void PrintFuntionList(FunctionsDA* list) {
+void PrintFunctionList(FunctionsDA* list) {
+    if (list->items == NULL) {
+        printf("no functions found\n");
+        exit(0);
+    }
     for (int i = 0; i<list->count-1; i++) {
-            printf("%s:%u:%u %s %s -> %s\n", list->items[i].file_path, list->items[i].line, list->items[i].col, list->items[i].name, list->items[i].is_defenition ? "(defenition)" : "", list->items[i].signature);
+            printf("%s:%u:%u %s %s -> %s\n", list->items[i].file_path, list->items[i].line, list->items[i].col, list->items[i].name, list->items[i].is_defenition ? "(defenition)" : " ", list->items[i].signature);
     }
 }
 
@@ -195,12 +200,17 @@ Function GetFunction(CXCursor cur) {
     const char* param_list = clang_getCString(clang_getTypeSpelling(ret_type));
     char* params = malloc(1);
     memset(params, 0, 1);
+    int prevlen = 0;
     for (int i = 0; i < num_args; i++) {
         CXType arg_type = clang_getArgType(func_type, i);
         CXString arg_str = clang_getTypeSpelling(arg_type);
         const char *arg_c = clang_getCString(arg_str);
+        if (i<0) {
+            prevlen = strlen(params);
+        }
 
-        params = realloc(params, strlen(params) + strlen(arg_c) + 3);
+        params = realloc(params, prevlen + strlen(arg_c) + 3);
+        memset(params+prevlen, 0, prevlen+strlen(arg_c)+3);
         if (i != 0){
             strcat(params, ", ");
             strcat(params, arg_c);
@@ -318,7 +328,7 @@ bool IsDir(const char *path) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 3) {
+    if (argc < 2) {
         PrintHelp();
         return 1;
     }
@@ -343,14 +353,14 @@ int main(int argc, char **argv) {
 
     if (!opts.query) {
         printf("WARNING: no query provided\n\n");
-        PrintFuntionList(&funtions);
+        PrintFunctionList(&funtions);
         clang_disposeTranslationUnit(tu);
         clang_disposeIndex(index);
         exit(0);
     }
 
     FunctionsDA results = SearchFunctions(&funtions, &opts);
-    PrintFuntionList(&results);
+    PrintFunctionList(&results);
 
     clang_disposeTranslationUnit(tu);
     clang_disposeIndex(index);
